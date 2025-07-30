@@ -61,6 +61,7 @@ declare -A recommended_packages=(
     ["thunar"]="Modern file manager"
     ["firefox"]="Web browser"
     ["code"]="Visual Studio Code"
+    ["rustup"]="Rust Language"
     ["git"]="Version control system"
     ["neovim"]="Hyperextensible Vim-based text editor"
     ["htop"]="Interactive process viewer"
