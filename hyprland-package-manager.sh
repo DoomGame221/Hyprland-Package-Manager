@@ -61,7 +61,6 @@ declare -A recommended_packages=(
     ["thunar"]="Modern file manager"
     ["firefox"]="Web browser"
     ["code"]="Visual Studio Code"
-    ["rustup"]="Rust Language"
     ["git"]="Version control system"
     ["neovim"]="Hyperextensible Vim-based text editor"
     ["htop"]="Interactive process viewer"
@@ -111,11 +110,23 @@ install_recommended_packages() {
             package_list="$package_list $package"
         done
         
-        if yay -S --needed --noconfirm $package_list; then
-            echo -e "${GREEN}✓ ติดตั้งแพ็กเกจเสร็จสมบูรณ์!${NC}"
-            setup_ufw
+        # ใช้ yay หรือ paru ตามที่มีในระบบ
+        if command -v yay &> /dev/null; then
+            if yay -S --needed --noconfirm $package_list; then
+                echo -e "${GREEN}✓ ติดตั้งแพ็กเกจเสร็จสมบูรณ์!${NC}"
+                setup_ufw
+            else
+                echo -e "${RED}✗ เกิดข้อผิดพลาดในการติดตั้งบางแพ็กเกจ${NC}"
+            fi
+        elif command -v paru &> /dev/null; then
+            if paru -S --needed --noconfirm $package_list; then
+                echo -e "${GREEN}✓ ติดตั้งแพ็กเกจเสร็จสมบูรณ์!${NC}"
+                setup_ufw
+            else
+                echo -e "${RED}✗ เกิดข้อผิดพลาดในการติดตั้งบางแพ็กเกจ${NC}"
+            fi
         else
-            echo -e "${RED}✗ เกิดข้อผิดพลาดในการติดตั้งบางแพ็กเกจ${NC}"
+            echo -e "${RED}✗ ไม่พบ AUR helper (yay หรือ paru)${NC}"
         fi
     else
         echo -e "${YELLOW}ยกเลิกการติดตั้ง${NC}"
@@ -342,12 +353,24 @@ update_system() {
     
     echo -e "${YELLOW}กำลังตรวจสอบการอัพเดท...${NC}"
     
-    if yay -Syu --noconfirm; then
-        echo ""
-        echo -e "${GREEN}✓ อัพเดทระบบเสร็จสมบูรณ์!${NC}"
+    if command -v yay &> /dev/null; then
+        if yay -Syu --noconfirm; then
+            echo ""
+            echo -e "${GREEN}✓ อัพเดทระบบเสร็จสมบูรณ์!${NC}"
+        else
+            echo ""
+            echo -e "${RED}✗ เกิดข้อผิดพลาดในการอัพเดทระบบ${NC}"
+        fi
+    elif command -v paru &> /dev/null; then
+        if paru -Syu --noconfirm; then
+            echo ""
+            echo -e "${GREEN}✓ อัพเดทระบบเสร็จสมบูรณ์!${NC}"
+        else
+            echo ""
+            echo -e "${RED}✗ เกิดข้อผิดพลาดในการอัพเดทระบบ${NC}"
+        fi
     else
-        echo ""
-        echo -e "${RED}✗ เกิดข้อผิดพลาดในการอัพเดทระบบ${NC}"
+        echo -e "${RED}✗ ไม่พบ AUR helper (yay หรือ paru)${NC}"
     fi
     
     echo ""
@@ -355,14 +378,17 @@ update_system() {
     read
 }
 
-# ฟังก์ชันตรวจสอบและติดตั้ง yay
+# ฟังก์ชันตรวจสอบและติดตั้ง AUR helper
 check_yay() {
     if command -v yay &> /dev/null; then
         echo -e "${GREEN}✓ yay พร้อมใช้งานแล้ว${NC}"
         return
+    elif command -v paru &> /dev/null; then
+        echo -e "${GREEN}✓ paru พร้อมใช้งานแล้ว (ใช้แทน yay)${NC}"
+        return
     fi
 
-    echo -e "${YELLOW}ไม่พบ 'yay' AUR helper กำลังติดตั้ง...${NC}"
+    echo -e "${YELLOW}ไม่พบ AUR helper (yay หรือ paru) กำลังติดตั้ง yay...${NC}"
 
     # ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต
     if ! ping -c 1 archlinux.org &> /dev/null; then
@@ -371,45 +397,61 @@ check_yay() {
     fi
 
     # ตรวจสอบและติดตั้งแพ็กเกจที่จำเป็น
-    echo -e "${YELLOW}กำลังตรวจสอบและติดตั้งแพ็กเกจที่จำเป็นสำหรับ yay...${NC}"
+    echo -e "${YELLOW}กำลังตรวจสอบและติดตั้งแพ็กเกจที่จำเป็น...${NC}"
     if ! sudo pacman -S --needed --noconfirm git base-devel go; then
         echo -e "${RED}✗ ไม่สามารถติดตั้งแพ็กเกจที่จำเป็น (git, base-devel, go) ได้${NC}"
         exit 1
     fi
 
-    # ล้างไดเรกทอรีชั่วคราวก่อน
+    # ล้างไดเรกทอรีชั่วคราว
     rm -rf /tmp/yay
     mkdir -p /tmp/yay
 
-    # Clone repository ของ yay
+    # ลองติดตั้ง yay ก่อน
     echo -e "${YELLOW}กำลัง clone repository ของ yay...${NC}"
-    if ! git clone https://aur.archlinux.org/yay.git /tmp/yay; then
-        echo -e "${RED}✗ ไม่สามารถ clone repository ของ yay ได้ กรุณาตรวจสอบ URL หรือการเชื่อมต่อ${NC}"
-        rm -rf /tmp/yay
-        exit 1
-    fi
-
-    # เข้าไปในไดเรกทอรีและ build yay
-    cd /tmp/yay || { echo -e "${RED}✗ ไม่สามารถเข้าสู่ไดเรกทอรี /tmp/yay${NC}"; exit 1; }
-    echo -e "${YELLOW}กำลัง build และติดตั้ง yay...${NC}"
-    if ! makepkg -si --noconfirm 2> /tmp/yay-install.log; then
-        echo -e "${RED}✗ ไม่สามารถ build หรือติดตั้ง yay ได้ ดูข้อผิดพลาดใน /tmp/yay-install.log${NC}"
-        cd -
-        rm -rf /tmp/yay
-        exit 1
-    fi
-
-    # กลับไปยังไดเรกทอรีเดิมและล้างไฟล์
-    cd -
-    rm -rf /tmp/yay
-
-    # ตรวจสอบว่า yay ติดตั้งสำเร็จ
-    if command -v yay &> /dev/null; then
-        echo -e "${GREEN}✓ ติดตั้ง yay เสร็จสมบูรณ์!${NC}"
+    if git clone https://aur.archlinux.org/yay.git /tmp/yay; then
+        cd /tmp/yay || { echo -e "${RED}✗ ไม่สามารถเข้าสู่ไดเรกทอรี /tmp/yay${NC}"; exit 1; }
+        echo -e "${YELLOW}กำลัง build และติดตั้ง yay...${NC}"
+        if makepkg -si --noconfirm 2> /tmp/yay-install.log; then
+            echo -e "${GREEN}✓ ติดตั้ง yay เสร็จสมบูรณ์!${NC}"
+            cd -
+            rm -rf /tmp/yay
+            return
+        else
+            echo -e "${RED}✗ ไม่สามารถ build หรือติดตั้ง yay ได้ ดูข้อผิดพลาดใน /tmp/yay-install.log${NC}"
+            cd -
+            rm -rf /tmp/yay
+        fi
     else
-        echo -e "${RED}✗ ไม่สามารถติดตั้ง yay ได้ ดูข้อผิดพลาดใน /tmp/yay-install.log${NC}"
-        exit 1
+        echo -e "${RED}✗ ไม่สามารถ clone repository ของ yay ได้${NC}"
+        rm -rf /tmp/yay
     fi
+
+    # หาก yay ล้มเหลว ลองติดตั้ง paru
+    echo -e "${YELLOW}yay ล้มเหลว กำลังลองติดตั้ง paru...${NC}"
+    rm -rf /tmp/paru
+    mkdir -p /tmp/paru
+    echo -e "${YELLOW}กำลัง clone repository ของ paru...${NC}"
+    if git clone https://aur.archlinux.org/paru.git /tmp/paru; then
+        cd /tmp/paru || { echo -e "${RED}✗ ไม่สามารถเข้าสู่ไดเรกทอรี /tmp/paru${NC}"; exit 1; }
+        echo -e "${YELLOW}กำลัง build และติดตั้ง paru...${NC}"
+        if makepkg -si --noconfirm 2> /tmp/paru-install.log; then
+            echo -e "${GREEN}✓ ติดตั้ง paru เสร็จสมบูรณ์!${NC}"
+            cd -
+            rm -rf /tmp/paru
+            return
+        else
+            echo -e "${RED}✗ ไม่สามารถ build หรือติดตั้ง paru ได้ ดูข้อผิดพลาดใน /tmp/paru-install.log${NC}"
+            cd -
+            rm -rf /tmp/paru
+        fi
+    else
+        echo -e "${RED}✗ ไม่สามารถ clone repository ของ paru ได้${NC}"
+        rm -rf /tmp/paru
+    fi
+
+    echo -e "${RED}✗ ไม่สามารถติดตั้ง AUR helper ได้ (ทั้ง yay และ paru)${NC}"
+    exit 1
 }
 
 # ฟังก์ชันอัพเดทสคริปต์จาก GitHub
