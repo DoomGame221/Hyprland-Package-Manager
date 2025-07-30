@@ -61,7 +61,6 @@ declare -A recommended_packages=(
     ["thunar"]="Modern file manager"
     ["firefox"]="Web browser"
     ["code"]="Visual Studio Code"
-    ["rustup"]="Rust Language"
     ["git"]="Version control system"
     ["neovim"]="Hyperextensible Vim-based text editor"
     ["htop"]="Interactive process viewer"
@@ -355,24 +354,60 @@ update_system() {
     read
 }
 
-# ฟังก์ชันตรวจสอบ yay
+# ฟังก์ชันตรวจสอบและติดตั้ง yay
 check_yay() {
-    if ! command -v yay &> /dev/null; then
-        echo -e "${RED}ไม่พบ 'yay' AUR helper${NC}"
-        echo -e "${YELLOW}กำลังติดตั้ง yay...${NC}"
-        
-        git clone https://aur.archlinux.org/yay.git /tmp/yay
-        cd /tmp/yay
-        makepkg -si --noconfirm
+    if command -v yay &> /dev/null; then
+        echo -e "${GREEN}✓ yay พร้อมใช้งานแล้ว${NC}"
+        return
+    fi
+
+    echo -e "${YELLOW}ไม่พบ 'yay' AUR helper กำลังติดตั้ง...${NC}"
+
+    # ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต
+    if ! ping -c 1 archlinux.org &> /dev/null; then
+        echo -e "${RED}✗ ไม่มีการเชื่อมต่ออินเทอร์เน็ต กรุณาตรวจสอบการเชื่อมต่อ${NC}"
+        exit 1
+    fi
+
+    # ตรวจสอบและติดตั้งแพ็กเกจที่จำเป็น
+    echo -e "${YELLOW}กำลังตรวจสอบและติดตั้งแพ็กเกจที่จำเป็นสำหรับ yay...${NC}"
+    if ! sudo pacman -S --needed --noconfirm git base-devel go; then
+        echo -e "${RED}✗ ไม่สามารถติดตั้งแพ็กเกจที่จำเป็น (git, base-devel, go) ได้${NC}"
+        exit 1
+    fi
+
+    # ล้างไดเรกทอรีชั่วคราวก่อน
+    rm -rf /tmp/yay
+    mkdir -p /tmp/yay
+
+    # Clone repository ของ yay
+    echo -e "${YELLOW}กำลัง clone repository ของ yay...${NC}"
+    if ! git clone https://aur.archlinux.org/yay.git /tmp/yay; then
+        echo -e "${RED}✗ ไม่สามารถ clone repository ของ yay ได้ กรุณาตรวจสอบ URL หรือการเชื่อมต่อ${NC}"
+        rm -rf /tmp/yay
+        exit 1
+    fi
+
+    # เข้าไปในไดเรกทอรีและ build yay
+    cd /tmp/yay || { echo -e "${RED}✗ ไม่สามารถเข้าสู่ไดเรกทอรี /tmp/yay${NC}"; exit 1; }
+    echo -e "${YELLOW}กำลัง build และติดตั้ง yay...${NC}"
+    if ! makepkg -si --noconfirm 2> /tmp/yay-install.log; then
+        echo -e "${RED}✗ ไม่สามารถ build หรือติดตั้ง yay ได้ ดูข้อผิดพลาดใน /tmp/yay-install.log${NC}"
         cd -
         rm -rf /tmp/yay
-        
-        if command -v yay &> /dev/null; then
-            echo -e "${GREEN}✓ ติดตั้ง yay เสร็จสมบูรณ์!${NC}"
-        else
-            echo -e "${RED}✗ ไม่สามารถติดตั้ง yay ได้${NC}"
-            exit 1
-        fi
+        exit 1
+    fi
+
+    # กลับไปยังไดเรกทอรีเดิมและล้างไฟล์
+    cd -
+    rm -rf /tmp/yay
+
+    # ตรวจสอบว่า yay ติดตั้งสำเร็จ
+    if command -v yay &> /dev/null; then
+        echo -e "${GREEN}✓ ติดตั้ง yay เสร็จสมบูรณ์!${NC}"
+    else
+        echo -e "${RED}✗ ไม่สามารถติดตั้ง yay ได้ ดูข้อผิดพลาดใน /tmp/yay-install.log${NC}"
+        exit 1
     fi
 }
 
